@@ -1,0 +1,54 @@
+@{ ViewData["Title"] = "Movimientos"; }
+
+<h2>Movimientos de Cuenta</h2>
+<hr />
+
+<div id="cuentaInfo"></div>
+<a href="/Cuenta/Saldos" class="btn btn-secondary mb-3">Volver a Saldos</a>
+<div id="movimientosContainer"><small class="text-muted">Cargando...</small></div>
+
+@section Scripts {
+<script>
+var API_BASE = 'http://localhost:5000';
+var nroCuenta = '@ViewBag.NroCuenta';
+
+$(function() {
+    if (!nroCuenta) {
+        $('#movimientosContainer').html('<div class="alert alert-warning">No se especifico una cuenta.</div>');
+        return;
+    }
+
+    // Cargar info de la cuenta
+    $.get(API_BASE + '/api/cuentas/' + nroCuenta, function(cuenta) {
+        $('#cuentaInfo').html(
+            '<div class="card mb-4"><div class="card-body"><div class="row">' +
+            '<div class="col-md-3"><strong>Cuenta:</strong> ' + cuenta.nroCuenta + '</div>' +
+            '<div class="col-md-3"><strong>Tipo:</strong> ' + cuenta.tipo + '</div>' +
+            '<div class="col-md-3"><strong>Moneda:</strong> ' + cuenta.moneda + '</div>' +
+            '<div class="col-md-3"><strong>Saldo:</strong> ' + cuenta.saldo.toFixed(2) + '</div>' +
+            '</div><div class="row mt-2"><div class="col-md-6"><strong>Titular:</strong> ' + cuenta.nombre + '</div></div></div></div>'
+        );
+    });
+
+    // Cargar movimientos
+    $.get(API_BASE + '/api/movimientos/' + nroCuenta, function(movimientos) {
+        if (!movimientos.length) {
+            $('#movimientosContainer').html('<div class="alert alert-info">No hay movimientos para esta cuenta.</div>');
+            return;
+        }
+        var html = '<table class="table table-striped table-hover"><thead class="table-dark"><tr>' +
+                   '<th>Fecha</th><th>Tipo</th><th>Importe</th><th>Tipo Cambio</th><th>Glosa</th></tr></thead><tbody>';
+        $.each(movimientos, function(i, m) {
+            var clase = m.tipo === 'A' ? 'table-success' : 'table-danger';
+            var fecha = new Date(m.fecha).toLocaleString('es-BO');
+            html += '<tr class="' + clase + '"><td>' + fecha + '</td><td>' + (m.tipo === 'A' ? 'ABONO' : 'DEBITO') + '</td>' +
+                    '<td>' + m.importe.toFixed(2) + '</td><td>' + m.tipoCambio.toFixed(5) + '</td><td>' + m.glosa + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        $('#movimientosContainer').html(html);
+    }).fail(function() {
+        $('#movimientosContainer').html('<div class="alert alert-warning">No se pudo cargar los movimientos.</div>');
+    });
+});
+</script>
+}

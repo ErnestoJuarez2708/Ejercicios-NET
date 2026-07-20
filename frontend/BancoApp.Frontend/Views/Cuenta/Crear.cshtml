@@ -1,0 +1,100 @@
+@{ ViewData["Title"] = "Adicion de Cuentas"; }
+
+<h2>Adicion de Cuentas</h2>
+<hr />
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form id="formCrearCuenta">
+                    <div class="mb-3">
+                        <label class="form-label">Numero de Cuenta</label>
+                        <input type="text" id="nroCuenta" class="form-control" maxlength="14" required />
+                        <small class="text-muted">CTE: 13 caracteres | AHO: 14 caracteres</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Cuenta</label>
+                        <select id="tipoCuenta" class="form-select" required>
+                            <option value="">-- Seleccionar --</option>
+                            <option value="AHO">CUENTA DE AHORRO (AHO)</option>
+                            <option value="CTE">CUENTA CORRIENTE (CTE)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Moneda</label>
+                        <select id="moneda" class="form-select" required>
+                            <option value="">-- Seleccionar --</option>
+                            <option value="BOL">BOLIVIANOS (BOL)</option>
+                            <option value="USD">DOLARES (USD)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre / Titular</label>
+                        <input type="text" id="nombre" class="form-control" maxlength="40" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Crear Cuenta</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div id="resultado" class="alert d-none"></div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+var API_BASE = 'http://localhost:5000';
+
+$(function() {
+    $('#tipoCuenta').on('change', function() {
+        var tipo = $(this).val();
+        if (tipo === 'CTE') {
+            $('#nroCuenta').attr('maxlength', 13).attr('placeholder', 'Ej: 3015002341220');
+        } else if (tipo === 'AHO') {
+            $('#nroCuenta').attr('maxlength', 14).attr('placeholder', 'Ej: 30107469802237');
+        }
+    });
+
+    $('#formCrearCuenta').on('submit', function(e) {
+        e.preventDefault();
+        var data = {
+            NroCuenta: $('#nroCuenta').val().trim(),
+            Tipo: $('#tipoCuenta').val(),
+            Moneda: $('#moneda').val(),
+            Nombre: $('#nombre').val().trim()
+        };
+
+        if (data.Tipo === 'CTE' && data.NroCuenta.length !== 13) {
+            mostrarResultado(false, 'La cuenta corriente debe tener exactamente 13 caracteres.');
+            return;
+        }
+        if (data.Tipo === 'AHO' && data.NroCuenta.length !== 14) {
+            mostrarResultado(false, 'La cuenta de ahorro debe tener exactamente 14 caracteres.');
+            return;
+        }
+
+        $.ajax({
+            url: API_BASE + '/api/cuentas',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(res) {
+                mostrarResultado(res.exito, res.mensaje);
+                if (res.exito) $('#formCrearCuenta')[0].reset();
+            },
+            error: function(xhr) {
+                var msg = xhr.responseJSON ? xhr.responseJSON.mensaje : 'Error al conectar con el servidor.';
+                mostrarResultado(false, msg);
+            }
+        });
+    });
+});
+
+function mostrarResultado(exito, mensaje) {
+    $('#resultado').removeClass('d-none alert-success alert-danger')
+        .addClass(exito ? 'alert-success' : 'alert-danger').text(mensaje);
+}
+</script>
+}

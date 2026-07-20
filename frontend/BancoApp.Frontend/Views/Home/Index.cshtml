@@ -1,0 +1,83 @@
+@{ ViewData["Title"] = "Inicio"; }
+
+<div class="text-center mb-4">
+    <h1 class="display-6">Sistema de Operaciones Bancarias</h1>
+    <p class="text-muted">Gestion de cuentas, movimientos y transferencias</p>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-4">
+        <a asp-controller="Cuenta" asp-action="Crear" class="text-decoration-none">
+            <div class="card border-primary h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-primary">Adicion de Cuentas</h5>
+                    <p class="card-text text-muted">Crear cuentas de ahorro o corriente en Bolivianos o Dolares.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a asp-controller="Movimiento" asp-action="AbonoRetiro" class="text-decoration-none">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-success">Abonos / Retiros</h5>
+                    <p class="card-text text-muted">Realizar depositos o retiros en cuentas registradas.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a asp-controller="Movimiento" asp-action="Transferencia" class="text-decoration-none">
+            <div class="card border-warning h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-warning">Transferencias</h5>
+                    <p class="card-text text-muted">Transferir fondos entre cuentas registradas.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a asp-controller="Cuenta" asp-action="Saldos" class="text-decoration-none">
+            <div class="card border-info h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-info">Consulta de Saldos</h5>
+                    <p class="card-text text-muted">Ver saldos de todas las cuentas registradas.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<hr class="my-4" />
+<h5>Cuentas Registradas</h5>
+<div id="cuentasHome"><small class="text-muted">Cargando...</small></div>
+
+@section Scripts {
+<script>
+var API_BASE = 'http://localhost:5000';
+
+$(function() {
+    cargarCuentas();
+});
+
+function cargarCuentas() {
+    $.get(API_BASE + '/api/cuentas', function(cuentas) {
+        if (!cuentas.length) {
+            $('#cuentasHome').html('<div class="alert alert-info">No hay cuentas registradas.</div>');
+            return;
+        }
+        var html = '<table class="table table-striped table-hover"><thead class="table-dark"><tr>' +
+                   '<th>Tipo</th><th>Moneda</th><th>Cuenta</th><th>Titular</th><th>Saldo</th><th>Mov</th></tr></thead><tbody>';
+        $.each(cuentas, function(i, c) {
+            html += '<tr><td>' + c.tipo + '</td><td>' + c.moneda + '</td><td>' + c.nroCuenta + '</td>' +
+                    '<td>' + c.nombre + '</td><td>' + c.saldo.toFixed(2) + '</td>' +
+                    '<td><a href="/Cuenta/Movimientos?nroCuenta=' + c.nroCuenta + '" class="btn btn-sm btn-outline-primary">Ver Mov</a></td></tr>';
+        });
+        html += '</tbody></table>';
+        $('#cuentasHome').html(html);
+    }).fail(function() {
+        $('#cuentasHome').html('<div class="alert alert-warning">No se pudo conectar con el backend. Verifique que este corriendo en ' + API_BASE + '</div>');
+    });
+}
+</script>
+}

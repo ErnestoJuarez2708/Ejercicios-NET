@@ -1,0 +1,32 @@
+@{ ViewData["Title"] = "Consulta de Saldos"; }
+
+<h2>Consulta de Saldos</h2>
+<hr />
+
+<div id="saldosContainer"><small class="text-muted">Cargando...</small></div>
+
+@section Scripts {
+<script>
+var API_BASE = 'http://localhost:5000';
+
+$(function() {
+    $.get(API_BASE + '/api/cuentas/saldos', function(cuentas) {
+        if (!cuentas.length) {
+            $('#saldosContainer').html('<div class="alert alert-info">No hay cuentas registradas.</div>');
+            return;
+        }
+        var html = '<table class="table table-striped table-hover"><thead class="table-dark"><tr>' +
+                   '<th>Tipo</th><th>Moneda</th><th>Cuenta</th><th>Titular</th><th>Saldo</th><th>Mov</th></tr></thead><tbody>';
+        $.each(cuentas, function(i, c) {
+            html += '<tr><td>' + c.tipo + '</td><td>' + c.moneda + '</td><td>' + c.nroCuenta + '</td>' +
+                    '<td>' + c.nombre + '</td><td>' + c.saldo.toFixed(2) + '</td>' +
+                    '<td><a href="/Cuenta/Movimientos?nroCuenta=' + c.nroCuenta + '" class="btn btn-sm btn-outline-primary">Ver Mov</a></td></tr>';
+        });
+        html += '</tbody></table>';
+        $('#saldosContainer').html(html);
+    }).fail(function() {
+        $('#saldosContainer').html('<div class="alert alert-warning">No se pudo conectar con el backend.</div>');
+    });
+});
+</script>
+}

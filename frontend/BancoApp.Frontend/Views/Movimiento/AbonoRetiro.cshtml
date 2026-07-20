@@ -1,0 +1,120 @@
+@{ ViewData["Title"] = "Abonos / Retiros"; }
+
+<h2>Abonos / Retiros</h2>
+<hr />
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white"><h5 class="mb-0">Deposito (Abono)</h5></div>
+            <div class="card-body">
+                <form id="formAbono">
+                    <div class="mb-3">
+                        <label class="form-label">Cuenta</label>
+                        <select id="cuentaAbono" class="form-select" required><option value="">-- Seleccionar --</option></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Importe</label>
+                        <input type="number" id="importeAbono" class="form-control" min="0.01" step="0.01" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Glosa / Descripcion</label>
+                        <input type="text" id="glosaAbono" class="form-control" maxlength="25" required />
+                    </div>
+                    <button type="submit" class="btn btn-success">Registrar Deposito</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-danger text-white"><h5 class="mb-0">Retiro (Debito)</h5></div>
+            <div class="card-body">
+                <form id="formRetiro">
+                    <div class="mb-3">
+                        <label class="form-label">Cuenta</label>
+                        <select id="cuentaRetiro" class="form-select" required><option value="">-- Seleccionar --</option></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Importe</label>
+                        <input type="number" id="importeRetiro" class="form-control" min="0.01" step="0.01" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Glosa / Descripcion</label>
+                        <input type="text" id="glosaRetiro" class="form-control" maxlength="25" required />
+                    </div>
+                    <button type="submit" class="btn btn-danger">Registrar Retiro</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="resultado" class="alert d-none"></div>
+
+@section Scripts {
+<script>
+var API_BASE = 'http://localhost:5000';
+
+$(function() {
+    cargarCuentas();
+
+    $('#formAbono').on('submit', function(e) {
+        e.preventDefault();
+        var data = {
+            NroCuenta: $('#cuentaAbono').val(),
+            Importe: parseFloat($('#importeAbono').val()),
+            Glosa: $('#glosaAbono').val().trim()
+        };
+        $.ajax({
+            url: API_BASE + '/api/movimientos/abono',
+            type: 'POST', contentType: 'application/json', data: JSON.stringify(data),
+            success: function(res) {
+                mostrarResultado(res.exito, res.mensaje);
+                if (res.exito) { $('#formAbono')[0].reset(); cargarCuentas(); }
+            },
+            error: function(xhr) {
+                var msg = xhr.responseJSON ? xhr.responseJSON.mensaje : 'Error al conectar.';
+                mostrarResultado(false, msg);
+            }
+        });
+    });
+
+    $('#formRetiro').on('submit', function(e) {
+        e.preventDefault();
+        var data = {
+            NroCuenta: $('#cuentaRetiro').val(),
+            Importe: parseFloat($('#importeRetiro').val()),
+            Glosa: $('#glosaRetiro').val().trim()
+        };
+        $.ajax({
+            url: API_BASE + '/api/movimientos/retiro',
+            type: 'POST', contentType: 'application/json', data: JSON.stringify(data),
+            success: function(res) {
+                mostrarResultado(res.exito, res.mensaje);
+                if (res.exito) { $('#formRetiro')[0].reset(); cargarCuentas(); }
+            },
+            error: function(xhr) {
+                var msg = xhr.responseJSON ? xhr.responseJSON.mensaje : 'Error al conectar.';
+                mostrarResultado(false, msg);
+            }
+        });
+    });
+});
+
+function cargarCuentas() {
+    $.get(API_BASE + '/api/cuentas', function(cuentas) {
+        var opts = '<option value="">-- Seleccionar --</option>';
+        $.each(cuentas, function(i, c) {
+            opts += '<option value="' + c.nroCuenta + '">' + c.nroCuenta + ' - ' + c.nombre + ' (' + c.saldo.toFixed(2) + ')</option>';
+        });
+        $('#cuentaAbono, #cuentaRetiro').html(opts);
+    });
+}
+
+function mostrarResultado(exito, mensaje) {
+    $('#resultado').removeClass('d-none alert-success alert-danger')
+        .addClass(exito ? 'alert-success' : 'alert-danger').text(mensaje);
+}
+</script>
+}

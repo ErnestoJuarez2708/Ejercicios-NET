@@ -1,0 +1,382 @@
+-- ============================================
+-- Base de datos: BancoDB
+-- Sistema de Operaciones Bancarias
+-- ============================================
+
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'BancoDB')
+BEGIN
+    CREATE DATABASE BancoDB;
+END
+GO
+
+USE BancoDB;
+GO
+
+-- ============================================
+-- TABLAS
+-- ============================================
+
+-- Tabla MONEDA
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'MONEDA') AND type = 'U')
+BEGIN
+    CREATE TABLE MONEDA (
+        CODIGO CHAR(3) PRIMARY KEY,
+        NOMBRE NVARCHAR(50) NOT NULL
+    );
+
+    INSERT INTO MONEDA (CODIGO, NOMBRE) VALUES
+        ('BOL', 'BOLIVIANOS'),
+        ('USD', 'DOLARES');
+END
+GO
+
+-- Tabla TIPO_CAMBIO
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'TIPO_CAMBIO') AND type = 'U')
+BEGIN
+    CREATE TABLE TIPO_CAMBIO (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        MONEDA_ORIGEN CHAR(3) NOT NULL,
+        MONEDA_DESTINO CHAR(3) NOT NULL,
+        TASA DECIMAL(15,5) NOT NULL,
+        FECHA DATETIME NOT NULL DEFAULT GETDATE(),
+        ACTIVO BIT NOT NULL DEFAULT 1
+    );
+
+    INSERT INTO TIPO_CAMBIO (MONEDA_ORIGEN, MONEDA_DESTINO, TASA) VALUES
+        ('USD', 'BOL', 6.96),
+        ('BOL', 'USD', 0.1437);
+END
+GO
+
+-- Tabla CUENTA
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'CUENTA') AND type = 'U')
+BEGIN
+    CREATE TABLE CUENTA (
+        NRO_CUENTA NVARCHAR(14) PRIMARY KEY,
+        TIPO CHAR(3) NOT NULL, -- AHO o CTE
+        MONEDA CHAR(3) NOT NULL,
+        NOMBRE NVARCHAR(40) NOT NULL,
+        SALDO DECIMAL(12,2) NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CUENTA_MONEDA FOREIGN KEY (MONEDA) REFERENCES MONEDA(CODIGO)
+    );
+END
+GO
+
+-- Tabla MOVIMIENTO
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'MOVIMIENTO') AND type = 'U')
+BEGIN
+    CREATE TABLE MOVIMIENTO (
+        NRO_CUENTA NVARCHAR(14) NOT NULL,
+        FECHA DATETIME NOT NULL DEFAULT GETDATE(),
+        TIPO CHAR(1) NOT NULL, -- D=Debito, A=Abono
+        IMPORTE DECIMAL(12,2) NOT NULL,
+        TIPO_CAMBIO DECIMAL(15,5) NOT NULL DEFAULT 1.0,
+        GLOSA NVARCHAR(25) NOT NULL,
+        CONSTRAINT FK_MOVIMIENTO_CUENTA FOREIGN KEY (NRO_CUENTA) REFERENCES CUENTA(NRO_CUENTA)
+    );
+END
+GO
+
+-- ============================================
+-- PROCEDIMIENTOS ALMACENADOS
+-- ============================================
+
+-- 1) SP: Crear cuenta
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_CREAR_CUENTA')
+    DROP PROCEDURE SP_CREAR_CUENTA;
+GO
+
+CREATE PROCEDURE SP_CREAR_CUENTA
+    @NRO_CUENTA NVARCHAR(14),
+    @TIPO CHAR(3),
+    @MONEDA CHAR(3),
+    @NOMBRE NVARCHAR(40)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Validar tipo
+    IF @TIPO NOT IN ('AHO', 'CTE')
+    BEGIN
+        RAISERROR('Tipo de cuenta invalido. Use AHO o CTE.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar moneda
+    IF NOT EXISTS (SELECT 1 FROM MONEDA WHERE CODIGO = @MONEDA)
+    BEGIN
+        RAISERROR('Codigo de moneda invalido.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar longitud segun tipo
+    IF @TIPO = 'CTE' AND LEN(@NRO_CUENTA) != 13
+    BEGIN
+        RAISERROR('La cuenta corriente debe tener 13 caracteres.', 16, 1);
+        RETURN;
+    END
+
+    IF @TIPO = 'AHO' AND LEN(@NRO_CUENTA) != 14
+    BEGIN
+        RAISERROR('La cuenta de ahorro debe tener 14 caracteres.', 16, 1);
+        RETURN;
+    END
+
+    -- Verificar que no exista
+    IF EXISTS (SELECT 1 FROM CUENTA WHERE NRO_CUENTA = @NRO_CUENTA)
+    BEGIN
+        RAISERROR('Ya existe una cuenta con ese numero.', 16, 1);
+        RETURN;
+    END
+
+    -- Validar nombre no vacio
+    IF LTRIM(RTRIM(@NOMBRE)) = ''
+    BEGIN
+        RAISERROR('El nombre de la cuenta no puede estar vacio.', 16, 1);
+        RETURN;
+    END
+
+    INSERT INTO CUENTA (NRO_CUENTA, TIPO, MONEDA, NOMBRE, SALDO)
+    VALUES (@NRO_CUENTA, @TIPO, @MONEDA, @NOMBRE, 0);
+END
+GO
+
+-- 2) SP: Listar cuentas
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_LISTAR_CUENTAS')
+    DROP PROCEDURE SP_LISTAR_CUENTAS;
+GO
+
+CREATE PROCEDURE SP_LISTAR_CUENTAS
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.NRO_CUENTA, c.TIPO, c.MONEDA, c.NOMBRE, c.SALDO,
+           m.NOMBRE AS MONEDA_NOMBRE
+    FROM CUENTA c
+    INNER JOIN MONEDA m ON c.MONEDA = m.CODIGO
+    ORDER BY c.NRO_CUENTA;
+END
+GO
+
+-- 3) SP: Consultar saldos (con titulo de cuenta)
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_CONSULTAR_SALDOS')
+    DROP PROCEDURE SP_CONSULTAR_SALDOS;
+GO
+
+CREATE PROCEDURE SP_CONSULTAR_SALDOS
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.TIPO, c.MONEDA, c.NRO_CUENTA, c.NOMBRE AS TITULAR, c.SALDO
+    FROM CUENTA c
+    ORDER BY c.NRO_CUENTA;
+END
+GO
+
+-- 4) SP: Obtener cuenta por numero
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_OBTENER_CUENTA')
+    DROP PROCEDURE SP_OBTENER_CUENTA;
+GO
+
+CREATE PROCEDURE SP_OBTENER_CUENTA
+    @NRO_CUENTA NVARCHAR(14)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.NRO_CUENTA, c.TIPO, c.MONEDA, c.NOMBRE, c.SALDO,
+           m.NOMBRE AS MONEDA_NOMBRE
+    FROM CUENTA c
+    INNER JOIN MONEDA m ON c.MONEDA = m.CODIGO
+    WHERE c.NRO_CUENTA = @NRO_CUENTA;
+END
+GO
+
+-- 5) SP: Registrar abono (deposito)
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_REGISTRAR_ABONO')
+    DROP PROCEDURE SP_REGISTRAR_ABONO;
+GO
+
+CREATE PROCEDURE SP_REGISTRAR_ABONO
+    @NRO_CUENTA NVARCHAR(14),
+    @IMPORTE DECIMAL(12,2),
+    @GLOSA NVARCHAR(25)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @IMPORTE <= 0
+    BEGIN
+        RAISERROR('El importe debe ser mayor a cero.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM CUENTA WHERE NRO_CUENTA = @NRO_CUENTA)
+    BEGIN
+        RAISERROR('La cuenta no existe.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRANSACTION;
+
+    -- Actualizar saldo
+    UPDATE CUENTA SET SALDO = SALDO + @IMPORTE WHERE NRO_CUENTA = @NRO_CUENTA;
+
+    -- Registrar movimiento
+    INSERT INTO MOVIMIENTO (NRO_CUENTA, FECHA, TIPO, IMPORTE, TIPO_CAMBIO, GLOSA)
+    VALUES (@NRO_CUENTA, GETDATE(), 'A', @IMPORTE, 1.0, @GLOSA);
+
+    COMMIT TRANSACTION;
+END
+GO
+
+-- 6) SP: Registrar retiro (debito)
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_REGISTRAR_RETIRO')
+    DROP PROCEDURE SP_REGISTRAR_RETIRO;
+GO
+
+CREATE PROCEDURE SP_REGISTRAR_RETIRO
+    @NRO_CUENTA NVARCHAR(14),
+    @IMPORTE DECIMAL(12,2),
+    @GLOSA NVARCHAR(25)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @IMPORTE <= 0
+    BEGIN
+        RAISERROR('El importe debe ser mayor a cero.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @SALDO_ACTUAL DECIMAL(12,2);
+    SELECT @SALDO_ACTUAL = SALDO FROM CUENTA WHERE NRO_CUENTA = @NRO_CUENTA;
+
+    IF @SALDO_ACTUAL IS NULL
+    BEGIN
+        RAISERROR('La cuenta no existe.', 16, 1);
+        RETURN;
+    END
+
+    IF @SALDO_ACTUAL < @IMPORTE
+    BEGIN
+        RAISERROR('Saldo insuficiente.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRANSACTION;
+
+    UPDATE CUENTA SET SALDO = SALDO - @IMPORTE WHERE NRO_CUENTA = @NRO_CUENTA;
+
+    INSERT INTO MOVIMIENTO (NRO_CUENTA, FECHA, TIPO, IMPORTE, TIPO_CAMBIO, GLOSA)
+    VALUES (@NRO_CUENTA, GETDATE(), 'D', @IMPORTE, 1.0, @GLOSA);
+
+    COMMIT TRANSACTION;
+END
+GO
+
+-- 7) SP: Realizar transferencia
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_REALIZAR_TRANSFERENCIA')
+    DROP PROCEDURE SP_REALIZAR_TRANSFERENCIA;
+GO
+
+CREATE PROCEDURE SP_REALIZAR_TRANSFERENCIA
+    @CUENTA_ORIGEN NVARCHAR(14),
+    @CUENTA_DESTINO NVARCHAR(14),
+    @IMPORTE DECIMAL(12,2),
+    @GLOSA NVARCHAR(25)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @IMPORTE <= 0
+    BEGIN
+        RAISERROR('El importe debe ser mayor a cero.', 16, 1);
+        RETURN;
+    END
+
+    IF @CUENTA_ORIGEN = @CUENTA_DESTINO
+    BEGIN
+        RAISERROR('No se puede transferir a la misma cuenta.', 16, 1);
+        RETURN;
+    END
+
+    -- Verificar cuentas
+    IF NOT EXISTS (SELECT 1 FROM CUENTA WHERE NRO_CUENTA = @CUENTA_ORIGEN)
+    BEGIN
+        RAISERROR('La cuenta origen no existe.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM CUENTA WHERE NRO_CUENTA = @CUENTA_DESTINO)
+    BEGIN
+        RAISERROR('La cuenta destino no existe.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @SALDO_ORIGEN DECIMAL(12,2);
+    SELECT @SALDO_ORIGEN = SALDO FROM CUENTA WHERE NRO_CUENTA = @CUENTA_ORIGEN;
+
+    IF @SALDO_ORIGEN < @IMPORTE
+    BEGIN
+        RAISERROR('Saldo insuficiente en cuenta origen.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRANSACTION;
+
+    -- Debitar origen
+    UPDATE CUENTA SET SALDO = SALDO - @IMPORTE WHERE NRO_CUENTA = @CUENTA_ORIGEN;
+    INSERT INTO MOVIMIENTO (NRO_CUENTA, FECHA, TIPO, IMPORTE, TIPO_CAMBIO, GLOSA)
+    VALUES (@CUENTA_ORIGEN, GETDATE(), 'D', @IMPORTE, 1.0, @GLOSA);
+
+    -- Acreditar destino
+    UPDATE CUENTA SET SALDO = SALDO + @IMPORTE WHERE NRO_CUENTA = @CUENTA_DESTINO;
+    INSERT INTO MOVIMIENTO (NRO_CUENTA, FECHA, TIPO, IMPORTE, TIPO_CAMBIO, GLOSA)
+    VALUES (@CUENTA_DESTINO, GETDATE(), 'A', @IMPORTE, 1.0, @GLOSA);
+
+    COMMIT TRANSACTION;
+END
+GO
+
+-- 8) SP: Consultar movimientos de una cuenta
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_CONSULTAR_MOVIMIENTOS')
+    DROP PROCEDURE SP_CONSULTAR_MOVIMIENTOS;
+GO
+
+CREATE PROCEDURE SP_CONSULTAR_MOVIMIENTOS
+    @NRO_CUENTA NVARCHAR(14)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM CUENTA WHERE NRO_CUENTA = @NRO_CUENTA)
+    BEGIN
+        RAISERROR('La cuenta no existe.', 16, 1);
+        RETURN;
+    END
+
+    SELECT m.NRO_CUENTA, m.FECHA, m.TIPO, m.IMPORTE, m.TIPO_CAMBIO, m.GLOSA,
+           CASE m.TIPO WHEN 'D' THEN 'DEBITO' WHEN 'A' THEN 'ABONO' END AS TIPO_DESC
+    FROM MOVIMIENTO m
+    WHERE m.NRO_CUENTA = @NRO_CUENTA
+    ORDER BY m.FECHA DESC;
+END
+GO
+
+-- 9) SP: Obtener tipos de cambio
+IF EXISTS (SELECT * FROM sys.procedures WHERE name = 'SP_OBTENER_TIPO_CAMBIO')
+    DROP PROCEDURE SP_OBTENER_TIPO_CAMBIO;
+GO
+
+CREATE PROCEDURE SP_OBTENER_TIPO_CAMBIO
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT MONEDA_ORIGEN, MONEDA_DESTINO, TASA, FECHA
+    FROM TIPO_CAMBIO
+    WHERE ACTIVO = 1;
+END
+GO
+
+PRINT 'Base de datos BancoDB creada exitosamente con todos los procedimientos almacenados.';
+GO
